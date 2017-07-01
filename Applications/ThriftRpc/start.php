@@ -12,6 +12,7 @@
  * @license http://www.opensource.org/licenses/mit-license.php MIT License
  */
 use Workerman\Worker;
+
 require_once __DIR__ . '/ThriftWorker.php';
 
 
@@ -21,7 +22,8 @@ $worker->class = 'HelloWorld';
 
 
 // 如果不是在根目录启动，则运行runAll方法
-if(!defined('GLOBAL_START'))
-{
-    Worker::runAll();
+// 两种运行方法, 被单独被启动; 整体被启动
+// runAll好处? 运维上比较方便 所有的服务都在一个进程内部统一启动
+if (!defined('GLOBAL_START')) {
+  Worker::runAll();
 }
