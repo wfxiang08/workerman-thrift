@@ -237,6 +237,7 @@ class Worker {
   /**
    * Listening socket.
    *
+   * 只在子进程中存在, 作为子进程状态的驱动
    * @var resource
    */
   protected $_mainSocket = null;
@@ -455,7 +456,12 @@ class Worker {
    * @return void
    */
   protected static function initWorkers() {
+    /**
+     * @var Worker $worker
+     */
     foreach (self::$_workers as $worker) {
+
+      // 1. 预处理worker->name
       // Worker name.
       if (empty($worker->name)) {
         $worker->name = 'none';
@@ -474,6 +480,7 @@ class Worker {
       }
 
       // Get unix user of the worker process.
+      // 2. 设置user的权限
       if (empty($worker->user)) {
         $worker->user = self::getCurrentUser();
       } else {
@@ -489,7 +496,8 @@ class Worker {
       }
 
       // Listen.
-      // 在主进程中开启监听
+      // 在主进程中开启监听, 然后每一个Worker就有了: _mainSocket
+      // 主进程中的所有的Worker都开启监听, 然后Worker就作为一个模块存在, 专门用于复制子进程
       if (!$worker->reusePort) {
         $worker->listen();
       }
@@ -687,7 +695,7 @@ class Worker {
    * @return void
    */
   protected static function reinstallSignal() {
-    // 先注销
+    // 先注销"继承自父进程"的配置
     // uninstall stop signal handler
     pcntl_signal(SIGINT, SIG_IGN, false);
     // uninstall reload signal handler
@@ -695,7 +703,8 @@ class Worker {
     // uninstall  status signal handler
     pcntl_signal(SIGUSR2, SIG_IGN, false);
 
-    // 再注册
+    // 再将"信号的处理"统一托管给: globalEvent
+    // 通过eventLoop, 将所有的函数, 例如: signalHandler, stopAll, reload等统一在一个线程内部完成
     // reinstall stop signal handler
     self::$globalEvent->add(SIGINT, EventInterface::EV_SIGNAL, array('\Workerman\Worker', 'signalHandler'));
     // reinstall  reload signal handler
@@ -766,12 +775,18 @@ class Worker {
     if (!self::$daemonize) {
       return;
     }
+    // 打开文件
     global $STDOUT, $STDERR;
     $handle = fopen(self::$stdoutFile, "a");
+
     if ($handle) {
       unset($handle);
+
+      // 关闭默认的输入输出
       @fclose(STDOUT);
       @fclose(STDERR);
+
+      // 重定向
       $STDOUT = fopen(self::$stdoutFile, "a");
       $STDERR = fopen(self::$stdoutFile, "a");
     } else {
@@ -873,16 +888,21 @@ class Worker {
     } // For child processes.
     elseif (0 === $pid) {
 
-      // 子进程?
+      // 1. 主进程中每一个Worker都会监控某个端口
+      // 2. 子进程做什么事情呢?
+      //    以每一个Worker为单元, 进行Fork, Fork之后Worker进入run的状态; 主进程不调用Worker#run
+      //    子进程的worker从母进程拷贝过来了自己的 _mainSocket, 然后 不管 reusePort 为true/false, listen()都不会有太大作用
       if ($worker->reusePort) {
         $worker->listen();
       }
+
       if (self::$_status === self::STATUS_STARTING) {
         self::resetStd();
       }
 
       // 重置父进程的状态
       self::$_pidMap = array();
+      // 子进程也维持一个workers dict
       self::$_workers = array($worker->workerId => $worker);
 
       Timer::delAll();
@@ -892,6 +912,7 @@ class Worker {
 
       // 具体的实例开始运行
       $worker->run();
+
       exit(250);
     } else {
       throw new Exception("forkOneWorker fail");
@@ -905,6 +926,7 @@ class Worker {
    * @param int $pid
    */
   protected static function getId($worker_id, $pid) {
+    // id的范围: [0, N-1] 挂了就补上
     $id = array_search($pid, self::$_idMap[$worker_id]);
     if ($id === false) {
       echo "getId fail\n";
@@ -1070,6 +1092,8 @@ class Worker {
       $reloadable_pid_array = array();
       foreach (self::$_pidMap as $worker_id => $worker_pid_array) {
         $worker = self::$_workers[$worker_id];
+
+        // reloadable 的配置有什么作用呢?
         if ($worker->reloadable) {
           foreach ($worker_pid_array as $pid) {
             $reloadable_pid_array[$pid] = $pid;
@@ -1144,8 +1168,9 @@ class Worker {
     else {
 
       // Execute exit.
-      // Workers直接关闭所有的worker
-      // 子进程中也可以有多个Worker
+      // 1. Workers直接关闭所有的worker
+      // 2. 子进程中也可以有多个Worker
+      //    子进程和Worker两个不同的概念
       foreach (self::$_workers as $worker) {
         $worker->stop();
       }
@@ -1363,7 +1388,7 @@ class Worker {
     }
 
     // Flag.
-    $flags = $this->transport === 'udp' ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+    $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
     $errno = 0;
     $errmsg = '';
 
@@ -1388,12 +1413,14 @@ class Worker {
     }
 
     // Create an Internet or Unix domain server socket.
+    // 在主进程中就创建了
     $this->_mainSocket = stream_socket_server($local_socket, $errno, $errmsg, $flags, $this->_context);
     if (!$this->_mainSocket) {
       throw new Exception($errmsg);
     }
 
     // Try to open keepalive for tcp and disable Nagle algorithm.
+    // 在内网这个非常有用,
     if (function_exists('socket_import_stream') && $this->transport === 'tcp') {
       $socket = socket_import_stream($this->_mainSocket);
       @socket_set_option($socket, SOL_SOCKET, SO_KEEPALIVE, 1);
@@ -1404,13 +1431,11 @@ class Worker {
     stream_set_blocking($this->_mainSocket, 0);
 
     // Register a listener to be notified when server socket is ready to read.
+
+    // $globalEvent 只在子进程中存在
     if (self::$globalEvent) {
-      if ($this->transport !== 'udp') {
-        self::$globalEvent->add($this->_mainSocket, EventInterface::EV_READ, array($this, 'acceptConnection'));
-      } else {
-        self::$globalEvent->add($this->_mainSocket, EventInterface::EV_READ,
-          array($this, 'acceptUdpConnection'));
-      }
+      // 暂时只考虑tcp请求
+      self::$globalEvent->add($this->_mainSocket, EventInterface::EV_READ, array($this, 'acceptConnection'));
     }
   }
 
@@ -1441,20 +1466,16 @@ class Worker {
     // Create a global event loop.
 
     // 注意Worker的EventLoop
+    // globalEvent 不共享, 每个子进程一个; 主进程没有
+    //
     if (!self::$globalEvent) {
       $eventLoopClass = "\\Workerman\\Events\\" . ucfirst(self::getEventLoopName());
       self::$globalEvent = new $eventLoopClass;
 
       // Register a listener to be notified when server socket is ready to read.
       if ($this->_socketName) {
-        if ($this->transport !== 'udp') {
-          // 首先_mainSocket为listening socket
-          self::$globalEvent->add($this->_mainSocket, EventInterface::EV_READ,
-            array($this, 'acceptConnection'));
-        } else {
-          self::$globalEvent->add($this->_mainSocket, EventInterface::EV_READ,
-            array($this, 'acceptUdpConnection'));
-        }
+        // 首先_mainSocket为listening socket
+        self::$globalEvent->add($this->_mainSocket, EventInterface::EV_READ, array($this, 'acceptConnection'));
       }
     }
 
@@ -1521,7 +1542,9 @@ class Worker {
     // TcpConnection.
     $connection = new TcpConnection($new_socket, $remote_address);
 
+    // connections如何管理呢? 如何删除?
     $this->connections[$connection->id] = $connection;
+
     $connection->worker = $this;
     $connection->protocol = $this->protocol;
     $connection->onMessage = $this->onMessage;
@@ -1544,36 +1567,4 @@ class Worker {
     }
   }
 
-  /**
-   * For udp package.
-   *
-   * @param resource $socket
-   * @return bool
-   */
-  public function acceptUdpConnection($socket) {
-    $recv_buffer = stream_socket_recvfrom($socket, self::MAX_UDP_PACKAGE_SIZE, 0, $remote_address);
-    if (false === $recv_buffer || empty($remote_address)) {
-      return false;
-    }
-    // UdpConnection.
-    $connection = new UdpConnection($socket, $remote_address);
-    $connection->protocol = $this->protocol;
-    if ($this->onMessage) {
-      if ($this->protocol) {
-        $parser = $this->protocol;
-        $recv_buffer = $parser::decode($recv_buffer, $connection);
-      }
-      ConnectionInterface::$statistics['total_request']++;
-      try {
-        call_user_func($this->onMessage, $connection, $recv_buffer);
-      } catch (\Exception $e) {
-        self::log($e);
-        exit(250);
-      } catch (\Error $e) {
-        self::log($e);
-        exit(250);
-      }
-    }
-    return true;
-  }
 }

@@ -11,12 +11,19 @@ use Thrift\Type\TType;
 use Thrift\Type\TMessageType;
 use Thrift\Protocol\TBinaryProtocolAccelerated;
 use Thrift\Exception\TApplicationException;
-
+// 定义Thrift接口(自动生成)
+// 注意:
+//     sayHello
+//     vs. send_sayHello
+//         recv_sayHello
+//     这里就是异步和同步的区别, 另外一个就是后端队列服务, 请求扔过去就不管了
+//
 interface HelloWorldIf {
 
   public function sayHello($name);
 }
 
+// ThriftClient
 class HelloWorldClient implements HelloWorldIf {
 
   protected $input_ = null;
@@ -51,6 +58,11 @@ class HelloWorldClient implements HelloWorldIf {
 
   public function recv_sayHello() {
     $bin_accel = ($this->input_ instanceof TBinaryProtocolAccelerated) && function_exists('thrift_protocol_read_binary');
+    // 二进制加速
+    // 序列化时间?
+    // 参考: http://python.jobbole.com/87559/
+    // php7似乎比python快很多, 暂时不考虑优化
+    //
     if ($bin_accel)
       $result = thrift_protocol_read_binary($this->input_, 'HelloWorld_sayHello_result', $this->input_->isStrictRead());
     else {
@@ -215,6 +227,7 @@ class HelloWorld_sayHello_result {
   }
 }
 
+// 服务器端的封装
 class HelloWorldProcessor {
 
   protected $handler_ = null;
@@ -223,12 +236,14 @@ class HelloWorldProcessor {
     $this->handler_ = $handler;
   }
 
+  // 如何处理Process呢?
   public function process($input, $output) {
     $rseqid = 0;
     $fname = null;
     $mtype = 0;
-
+    // 读取MessageBegin
     $input->readMessageBegin($fname, $mtype, $rseqid);
+    // 得到方法名, 参数
     $methodname = 'process_' . $fname;
     if (!method_exists($this, $methodname)) {
       $input->skip(TType::STRUCT);
@@ -240,6 +255,8 @@ class HelloWorldProcessor {
       $output->getTransport()->flush();
       return;
     }
+
+    // 调用具体的方法
     $this->$methodname($rseqid, $input, $output);
     return true;
   }

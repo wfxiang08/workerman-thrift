@@ -214,7 +214,9 @@ class TcpConnection extends ConnectionInterface {
   public function __construct($socket, $remote_address = '') {
     self::$statistics['connection_count']++;
 
+    // 编号
     $this->id = $this->_id = self::$_idRecorder++;
+    // 服务器端的Socket
     $this->_socket = $socket;
     stream_set_blocking($this->_socket, 0);
 
@@ -223,8 +225,9 @@ class TcpConnection extends ConnectionInterface {
       stream_set_read_buffer($this->_socket, 0);
     }
 
-
+    // 通过libevent监听socket的读写
     Worker::$globalEvent->add($this->_socket, EventInterface::EV_READ, array($this, 'baseRead'));
+
     $this->maxSendBufferSize = self::$defaultMaxSendBufferSize;
     $this->_remoteAddress = $remote_address;
   }
@@ -592,13 +595,17 @@ class TcpConnection extends ConnectionInterface {
     // Remove event listener.
     Worker::$globalEvent->del($this->_socket, EventInterface::EV_READ);
     Worker::$globalEvent->del($this->_socket, EventInterface::EV_WRITE);
+
     // Close socket.
     @fclose($this->_socket);
+
+    // 自我清理
     // Remove from worker->connections.
     if ($this->worker) {
       unset($this->worker->connections[$this->_id]);
     }
     $this->_status = self::STATUS_CLOSED;
+
     // Try to emit onClose callback.
     if ($this->onClose) {
       try {
@@ -611,6 +618,7 @@ class TcpConnection extends ConnectionInterface {
         exit(250);
       }
     }
+
     // Try to emit protocol::onClose
     if (method_exists($this->protocol, 'onClose')) {
       try {
@@ -623,6 +631,7 @@ class TcpConnection extends ConnectionInterface {
         exit(250);
       }
     }
+
     if ($this->_status === self::STATUS_CLOSED) {
       // Cleaning up the callback to avoid memory leaks.
       $this->onMessage = $this->onClose = $this->onError = $this->onBufferFull = $this->onBufferDrain = null;

@@ -39,7 +39,7 @@ class TBinaryProtocol extends TProtocol {
   protected $strictRead_ = false;
   protected $strictWrite_ = true;
 
-  public function __construct($trans, $strictRead=false, $strictWrite=true) {
+  public function __construct($trans, $strictRead = false, $strictWrite = true) {
     parent::__construct($trans);
     $this->strictRead_ = $strictRead;
     $this->strictWrite_ = $strictWrite;
@@ -179,6 +179,7 @@ class TBinaryProtocol extends TProtocol {
   }
 
   public function writeDouble($value) {
+    // 通过pack函数来实现序列化&反序列化
     $data = pack('d', $value);
     $this->trans_->write(strrev($data), 8);
     return 8;
@@ -196,9 +197,9 @@ class TBinaryProtocol extends TProtocol {
   public function readMessageBegin(&$name, &$type, &$seqid) {
     $result = $this->readI32($sz);
     if ($sz < 0) {
-      $version = (int) ($sz & self::VERSION_MASK);
-      if ($version != (int) self::VERSION_1) {
-        throw new TProtocolException('Bad version identifier: '.$sz, TProtocolException::BAD_VERSION);
+      $version = (int)($sz & self::VERSION_MASK);
+      if ($version != (int)self::VERSION_1) {
+        throw new TProtocolException('Bad version identifier: ' . $sz, TProtocolException::BAD_VERSION);
       }
       $type = $sz & 0x000000ff;
       $result +=
@@ -324,7 +325,7 @@ class TBinaryProtocol extends TProtocol {
 
       $hi = $arr[1];
       $lo = $arr[2];
-      $isNeg = $hi  < 0;
+      $isNeg = $hi < 0;
 
       // Check for a negative
       if ($isNeg) {
@@ -369,9 +370,9 @@ class TBinaryProtocol extends TProtocol {
         $arr[1] = $arr[1] & 0xffffffff;
         $arr[1] = $arr[1] ^ 0xffffffff;
         $arr[2] = $arr[2] ^ 0xffffffff;
-        $value = 0 - $arr[1]*4294967296 - $arr[2] - 1;
+        $value = 0 - $arr[1] * 4294967296 - $arr[2] - 1;
       } else {
-        $value = $arr[1]*4294967296 + $arr[2];
+        $value = $arr[1] * 4294967296 + $arr[2];
       }
     }
 

@@ -146,7 +146,7 @@ class ThriftWorker extends Worker {
       // 似乎不是线程安全的代码
       \Thrift\Statistics\StatisticClient::tick();
 
-      // 业务处理
+      // 业务处理(一次只处理一个任务?)
       $this->processor->process($protocol, $protocol);
 
       \Thrift\Statistics\StatisticClient::report($this->name, $protocol->fname, 1, 0, '', $this->statisticAddress);
