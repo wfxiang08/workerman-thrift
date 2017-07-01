@@ -13,7 +13,6 @@
  */
 use Workerman\Worker;
 
-
 define('THRIFT_ROOT', __DIR__);
 require_once THRIFT_ROOT . '/Lib/Thrift/ClassLoader/ThriftClassLoader.php';
 require_once THRIFT_ROOT . '/Lib/Statistics/StatisticClient.php';
@@ -73,7 +72,11 @@ class ThriftWorker extends Worker {
 
   /**
    * 进程启动时做的一些初始化工作
-   * @see Man\Core.SocketWorker::onStart()
+   * 例如:
+   *    1. 加载RPC服务所需要的类文件
+   *    2. 判断文件类文件是否存在
+   *    3. 创建Handler
+   *    4. 创建Processor
    * @return void
    */
   public function onStart() {
@@ -87,12 +90,13 @@ class ThriftWorker extends Worker {
       $this->name = $this->class;
     }
 
-    // 载入该服务下的所有文件
+    // 加载"该服务下"的所有文件
     foreach (glob(THRIFT_ROOT . '/Services/' . $this->class . '/*.php') as $php_file) {
       require_once $php_file;
     }
 
     // 检查类是否存在
+    // Service\HelloWorld\HelloWorldProcessor
     $processor_class_name = "\\Services\\" . $this->class . "\\" . $this->class . 'Processor';
     if (!class_exists($processor_class_name)) {
       ThriftWorker::log("Class $processor_class_name not found");
@@ -106,7 +110,10 @@ class ThriftWorker extends Worker {
       return;
     }
 
+    // 创建Handler
     $handler = new $handler_class_name();
+
+    // 创建Processor
     $this->processor = new $processor_class_name($handler);
   }
 
@@ -116,9 +123,15 @@ class ThriftWorker extends Worker {
    * @return void
    */
   public function onConnect($connection) {
+    // 服务器端如何处理Socket呢?
+    // 1. Connection --> Socket(tcp)
     $socket = $connection->getSocket();
+
+    // 2. Socket --> TSocket
     $t_socket = new Thrift\Transport\TSocket($connection->getRemoteIp(), $connection->getRemotePort());
     $t_socket->setHandle($socket);
+
+    // 3. Transport & Protocol(TODO: 如何支持多种协议呢?)
     $transport_name = '\\Thrift\\Transport\\' . $this->thriftTransport;
     $transport = new $transport_name($t_socket);
     $protocol_name = '\\Thrift\\Protocol\\' . $this->thriftProtocol;
@@ -128,12 +141,18 @@ class ThriftWorker extends Worker {
     try {
       // 先初始化一个
       $protocol->fname = 'none';
+
       // 统计开始时间
+      // 似乎不是线程安全的代码
       \Thrift\Statistics\StatisticClient::tick();
+
       // 业务处理
       $this->processor->process($protocol, $protocol);
+
       \Thrift\Statistics\StatisticClient::report($this->name, $protocol->fname, 1, 0, '', $this->statisticAddress);
+
     } catch (\Exception $e) {
+
       \Thrift\Statistics\StatisticClient::report($this->name, $protocol->fname, 0, $e->getCode(), $e, $this->statisticAddress);
       ThriftWorker::log('CODE:' . $e->getCode() . ' MESSAGE:' . $e->getMessage() . "\n" . $e->getTraceAsString() . "\nCLIENT_IP:" . $connection->getRemoteIp() . "\n");
       $connection->send($e->getMessage());

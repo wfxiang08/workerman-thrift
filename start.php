@@ -25,5 +25,6 @@ require_once __DIR__ . '/vendor/autoload.php';
 foreach (glob(__DIR__ . '/Applications/*/start*.php') as $start_file) {
   require_once $start_file;
 }
+
 // 运行所有服务
 Worker::runAll();

@@ -45,6 +45,7 @@ class StatisticClient {
    */
   public static function report($module, $interface, $success, $code, $msg, $report_address = '') {
     $report_address = $report_address ? $report_address : 'udp://127.0.0.1:55656';
+
     if (isset(self::$timeMap[$module][$interface]) && self::$timeMap[$module][$interface] > 0) {
       $time_start = self::$timeMap[$module][$interface];
       self::$timeMap[$module][$interface] = 0;
@@ -178,11 +179,15 @@ class StatisticProtocol {
 
 }
 
+// 类似Python中的 __file__ == "main"
+// 判断php是直接运行的, 而不是被import的
+//
 if (PHP_SAPI == 'cli' && isset($argv[0]) && $argv[0] == basename(__FILE__)) {
   StatisticClient::tick("TestModule", 'TestInterface');
   usleep(rand(10000, 600000));
   $success = rand(0, 1);
   $code = rand(300, 400);
   $msg = '这个是测试消息';
+
   var_export(StatisticClient::report('TestModule', 'TestInterface', $success, $code, $msg));;
 }

@@ -41,10 +41,17 @@ class Autoloader {
    * @return boolean
    */
   public static function loadByNamespace($name) {
+    // 用法:
+    //   例如: use Workerman\Worker;
+    //        ----> Workerman/Worker.php
     $class_path = str_replace('\\', DIRECTORY_SEPARATOR, $name);
+
     if (strpos($name, 'Workerman\\') === 0) {
       $class_file = __DIR__ . substr($class_path, strlen('Workerman')) . '.php';
     } else {
+      // 其他namespace的处理
+      // 指定root path下的
+      // 当前目录的 Parent目录下搜索
       if (self::$_autoloadRootPath) {
         $class_file = self::$_autoloadRootPath . DIRECTORY_SEPARATOR . $class_path . '.php';
       }

@@ -34,47 +34,16 @@ class Worker {
    */
   const VERSION = '3.3.4';
 
-  /**
-   * Status starting.
-   *
-   * @var int
-   */
+  // 四种状态
   const STATUS_STARTING = 1;
-
-  /**
-   * Status running.
-   *
-   * @var int
-   */
   const STATUS_RUNNING = 2;
-
-  /**
-   * Status shutdown.
-   *
-   * @var int
-   */
   const STATUS_SHUTDOWN = 4;
-
-  /**
-   * Status reloading.
-   *
-   * @var int
-   */
   const STATUS_RELOADING = 8;
 
-  /**
-   * After sending the restart command to the child process KILL_WORKER_TIMER_TIME seconds,
-   * if the process is still living then forced to kill.
-   *
-   * @var int
-   */
+  // 注意workerman的这个配置, 后台的worker必须速战速决, 否则就容易被干死了
   const KILL_WORKER_TIMER_TIME = 2;
 
-  /**
-   * Default backlog. Backlog is the maximum length of the queue of pending connections.
-   *
-   * @var int
-   */
+  // Default backlog. Backlog is the maximum length of the queue of pending connections.
   const DEFAULT_BACKLOG = 1024;
   /**
    * Max udp package size.
@@ -370,7 +339,7 @@ class Worker {
   );
 
   /**
-   * Available event loops.
+   * Available event loops. 排在前面的方案优先选取
    *
    * @var array
    */
@@ -422,6 +391,7 @@ class Worker {
     self::saveMasterPid();
 
     self::forkWorkers();
+
     self::displayUI();
     self::resetStd();
 
@@ -706,6 +676,7 @@ class Worker {
     pcntl_signal(SIGUSR1, array('\Workerman\Worker', 'signalHandler'), false);
     // status
     pcntl_signal(SIGUSR2, array('\Workerman\Worker', 'signalHandler'), false);
+
     // ignore
     pcntl_signal(SIGPIPE, SIG_IGN, false);
   }
@@ -716,6 +687,7 @@ class Worker {
    * @return void
    */
   protected static function reinstallSignal() {
+    // 先注销
     // uninstall stop signal handler
     pcntl_signal(SIGINT, SIG_IGN, false);
     // uninstall reload signal handler
@@ -723,6 +695,7 @@ class Worker {
     // uninstall  status signal handler
     pcntl_signal(SIGUSR2, SIG_IGN, false);
 
+    // 再注册
     // reinstall stop signal handler
     self::$globalEvent->add(SIGINT, EventInterface::EV_SIGNAL, array('\Workerman\Worker', 'signalHandler'));
     // reinstall  reload signal handler
@@ -742,11 +715,13 @@ class Worker {
       case SIGINT:
         self::stopAll();
         break;
+
       // Reload.
       case SIGUSR1:
         self::$_pidsToRestart = self::getAllWorkerPids();
         self::reload();
         break;
+
       // Show status.
       case SIGUSR2:
         self::writeStatisticsToStatusFile();
@@ -811,6 +786,8 @@ class Worker {
    */
   protected static function saveMasterPid() {
     self::$_masterPid = posix_getpid();
+
+    // 保存maser的pid
     if (false === @file_put_contents(self::$pidFile, self::$_masterPid)) {
       throw new Exception('can not save pid to ' . self::$pidFile);
     }
@@ -838,6 +815,9 @@ class Worker {
    */
   protected static function getAllWorkerPids() {
     $pid_array = array();
+
+    // 一个Workerman进程中可以同时管理多个Worker
+    // 每一个Worker对应多个worker process
     foreach (self::$_pidMap as $worker_pid_array) {
       foreach ($worker_pid_array as $worker_pid) {
         $pid_array[$worker_pid] = $worker_pid;
@@ -853,7 +833,9 @@ class Worker {
    */
   protected static function forkWorkers() {
     foreach (self::$_workers as $worker) {
+
       if (self::$_status === self::STATUS_STARTING) {
+        // 在启动阶段确保所有的Worker有一个名字
         if (empty($worker->name)) {
           $worker->name = $worker->getSocketName();
         }
@@ -879,6 +861,7 @@ class Worker {
   protected static function forkOneWorker($worker) {
     $pid = pcntl_fork();
     // Get available worker id.
+    // workerId: [0, N-1] 可以让不同的进程能持续跟进自己的事情
     $id = self::getId($worker->workerId, 0);
 
     // For master process.
@@ -889,6 +872,7 @@ class Worker {
 
     } // For child processes.
     elseif (0 === $pid) {
+
       // 子进程?
       if ($worker->reusePort) {
         $worker->listen();
@@ -984,12 +968,20 @@ class Worker {
    */
   protected static function monitorWorkers() {
     self::$_status = self::STATUS_RUNNING;
+
+    // 如何监听呢?
+    // 1. 死循环
     while (1) {
+      // 检测信号
       // Calls signal handlers for pending signals.
       pcntl_signal_dispatch();
+
       // Suspends execution of the current process until a child has exited, or until a signal is delivered
       $status = 0;
+      // 等待某个Child退出?
+      // 子进程进入暂停则马上返回,但结束状态不予以理会.
       $pid = pcntl_wait($status, WUNTRACED);
+
       // Calls signal handlers for pending signals again.
       pcntl_signal_dispatch();
       // If a child has already exited.
@@ -1140,16 +1132,20 @@ class Worker {
     if (self::$_masterPid === posix_getpid()) {
       self::log("Workerman[" . basename(self::$_startFile) . "] Stopping ...");
       $worker_pid_array = self::getAllWorkerPids();
+
       // Send stop signal to all child processes.
       foreach ($worker_pid_array as $worker_pid) {
         posix_kill($worker_pid, SIGINT);
+
         // 对于worker, 如果2s不退出, 则直接kill -9 强制杀死
         Timer::add(self::KILL_WORKER_TIMER_TIME, 'posix_kill', array($worker_pid, SIGKILL), false);
       }
     } // For child processes.
     else {
+
       // Execute exit.
       // Workers直接关闭所有的worker
+      // 子进程中也可以有多个Worker
       foreach (self::$_workers as $worker) {
         $worker->stop();
       }
@@ -1315,6 +1311,7 @@ class Worker {
     self::$_pidMap[$this->workerId] = array();
 
     // Get autoload root path.
+    // 当前文件的路径?
     $backtrace = debug_backtrace();
     $this->_autoloadRootPath = dirname($backtrace[0]['file']);
 
@@ -1348,8 +1345,10 @@ class Worker {
     $local_socket = $this->_socketName;
     // Get the application layer communication protocol and listening address.
     list($scheme, $address) = explode(':', $this->_socketName, 2);
+
     // Check application layer protocol class.
     if (!isset(self::$_builtinTransports[$scheme])) {
+      // 其他协议: 暂不考虑
       $scheme = ucfirst($scheme);
       $this->protocol = '\\Protocols\\' . $scheme;
       if (!class_exists($this->protocol)) {
@@ -1367,19 +1366,27 @@ class Worker {
     $flags = $this->transport === 'udp' ? STREAM_SERVER_BIND : STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
     $errno = 0;
     $errmsg = '';
+
     // SO_REUSEPORT.
+    // 在Php7下最好设置为true
     if ($this->reusePort) {
       stream_context_set_option($this->_context, 'socket', 'so_reuseport', 1);
     }
+
+    //
+    // unix://tmp/aa.sock
+    //
     if ($this->transport === 'unix') {
       umask(0);
       list(, $address) = explode(':', $this->_socketName, 2);
       if (!is_file($address)) {
+        // 退出时, 直接删除sock
         register_shutdown_function(function () use ($address) {
           @unlink($address);
         });
       }
     }
+
     // Create an Internet or Unix domain server socket.
     $this->_mainSocket = stream_socket_server($local_socket, $errno, $errmsg, $flags, $this->_context);
     if (!$this->_mainSocket) {
@@ -1432,6 +1439,7 @@ class Worker {
     Autoloader::setRootPath($this->_autoloadRootPath);
 
     // Create a global event loop.
+
     // 注意Worker的EventLoop
     if (!self::$globalEvent) {
       $eventLoopClass = "\\Workerman\\Events\\" . ucfirst(self::getEventLoopName());
@@ -1440,6 +1448,7 @@ class Worker {
       // Register a listener to be notified when server socket is ready to read.
       if ($this->_socketName) {
         if ($this->transport !== 'udp') {
+          // 首先_mainSocket为listening socket
           self::$globalEvent->add($this->_mainSocket, EventInterface::EV_READ,
             array($this, 'acceptConnection'));
         } else {
