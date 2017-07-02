@@ -118,13 +118,23 @@ class ThriftWorker {
 
 
         }
-      } catch
-      (\Exception $ex) {
+      } catch (\Exception $ex) {
         // 这里出现异常, 就必须断开重连了
         break;
       }
     }
   }
+
+  /**
+   * @param TBinaryProtocol $protocol
+   * @param TFramedTransport $transport
+   */
+  protected function writeStopBack($protocol, $transport) {
+    $protocol->writeMessageBegin("stop", self::MESSAGE_TYPE_STOP, 0);
+    $protocol->writeMessageEnd();
+    $transport->flush();
+  }
+
 
   /**
    * @param \Exception $ex
@@ -133,8 +143,7 @@ class ThriftWorker {
    * @param TBinaryProtocol $protocol
    * @param TFramedTransport $transport
    */
-  protected
-  function writeExceptionBack($ex, $name, $seqid, $protocol, $transport) {
+  protected function writeExceptionBack($ex, $name, $seqid, $protocol, $transport) {
     // TODO: 优化Trace
     $msg = $ex->getTraceAsString();
 
