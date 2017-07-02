@@ -34,338 +34,294 @@ use Thrift\Protocol\SimpleJSON\CollectionMapKeyException;
 /**
  * SimpleJSON implementation of thrift protocol, ported from Java.
  */
-class TSimpleJSONProtocol extends TProtocol
-{
-    const COMMA = ',';
-    const COLON = ':';
-    const LBRACE = '{';
-    const RBRACE = '}';
-    const LBRACKET = '[';
-    const RBRACKET = ']';
-    const QUOTE = '"';
+class TSimpleJSONProtocol extends TProtocol {
+  const COMMA = ',';
+  const COLON = ':';
+  const LBRACE = '{';
+  const RBRACE = '}';
+  const LBRACKET = '[';
+  const RBRACKET = ']';
+  const QUOTE = '"';
 
-    const NAME_MAP = "map";
-    const NAME_LIST = "lst";
-    const NAME_SET = "set";
+  const NAME_MAP = "map";
+  const NAME_LIST = "lst";
+  const NAME_SET = "set";
 
-    protected $writeContext_ = null;
-    protected $writeContextStack_ = [];
+  protected $writeContext_ = null;
+  protected $writeContextStack_ = [];
 
-    /**
-     * Push a new write context onto the stack.
-     */
-    protected function pushWriteContext(Context $c) {
-        $this->writeContextStack_[] = $this->writeContext_;
-        $this->writeContext_ = $c;
+  /**
+   * Push a new write context onto the stack.
+   */
+  protected function pushWriteContext(Context $c) {
+    $this->writeContextStack_[] = $this->writeContext_;
+    $this->writeContext_ = $c;
+  }
+
+  /**
+   * Pop the last write context off the stack
+   */
+  protected function popWriteContext() {
+    $this->writeContext_ = array_pop($this->writeContextStack_);
+  }
+
+  /**
+   * Used to make sure that we are not encountering a map whose keys are containers
+   */
+  protected function assertContextIsNotMapKey($invalidKeyType) {
+    if ($this->writeContext_->isMapKey()) {
+      throw new CollectionMapKeyException(
+        "Cannot serialize a map with keys that are of type " .
+        $invalidKeyType
+      );
+    }
+  }
+
+  private function writeJSONString($b) {
+    $this->writeContext_->write();
+
+    $this->trans_->write(json_encode((string)$b));
+  }
+
+  private function writeJSONInteger($num) {
+    $isMapKey = $this->writeContext_->isMapKey();
+
+    $this->writeContext_->write();
+
+    if ($isMapKey) {
+      $this->trans_->write(self::QUOTE);
     }
 
-    /**
-     * Pop the last write context off the stack
-     */
-    protected function popWriteContext() {
-        $this->writeContext_ = array_pop($this->writeContextStack_);
+    $this->trans_->write((int)$num);
+
+    if ($isMapKey) {
+      $this->trans_->write(self::QUOTE);
+    }
+  }
+
+  private function writeJSONDouble($num) {
+    $isMapKey = $this->writeContext_->isMapKey();
+
+    $this->writeContext_->write();
+
+    if ($isMapKey) {
+      $this->trans_->write(self::QUOTE);
     }
 
-    /**
-     * Used to make sure that we are not encountering a map whose keys are containers
-     */
-    protected function assertContextIsNotMapKey($invalidKeyType) {
-        if ($this->writeContext_->isMapKey()) {
-            throw new CollectionMapKeyException(
-                "Cannot serialize a map with keys that are of type " .
-                $invalidKeyType
-            );
-        }
+    $this->trans_->write(json_encode((float)$num));
+
+    if ($isMapKey) {
+      $this->trans_->write(self::QUOTE);
     }
+  }
 
-    private function writeJSONString($b)
-    {
-        $this->writeContext_->write();
+  /**
+   * Constructor
+   */
+  public function __construct($trans) {
+    parent::__construct($trans);
+    $this->writeContext_ = new Context();
+  }
 
-        $this->trans_->write(json_encode((string)$b));
-    }
+  /**
+   * Writes the message header
+   *
+   * @param string $name Function name
+   * @param int $type message type TMessageType::CALL or TMessageType::REPLY
+   * @param int $seqid The sequence id of this message
+   */
+  public function writeMessageBegin($name, $type, $seqid) {
+    $this->trans_->write(self::LBRACKET);
+    $this->pushWriteContext(new ListContext($this));
+    $this->writeJSONString($name);
+    $this->writeJSONInteger($type);
+    $this->writeJSONInteger($seqid);
+  }
 
-    private function writeJSONInteger($num)
-    {
-        $isMapKey = $this->writeContext_->isMapKey();
+  /**
+   * Close the message
+   */
+  public function writeMessageEnd() {
+    $this->popWriteContext();
+    $this->trans_->write(self::RBRACKET);
+  }
 
-        $this->writeContext_->write();
+  /**
+   * Writes a struct header.
+   *
+   * @param  string $name Struct name
+   */
+  public function writeStructBegin($name) {
+    $this->writeContext_->write();
+    $this->trans_->write(self::LBRACE);
+    $this->pushWriteContext(new StructContext($this));
+  }
 
-        if ($isMapKey) {
-            $this->trans_->write(self::QUOTE);
-        }
+  /**
+   * Close a struct.
+   */
+  public function writeStructEnd() {
+    $this->popWriteContext();
+    $this->trans_->write(self::RBRACE);
+  }
 
-        $this->trans_->write((int)$num);
+  public function writeFieldBegin($fieldName, $fieldType, $fieldId) {
+    $this->writeJSONString($fieldName);
+  }
 
-        if ($isMapKey) {
-            $this->trans_->write(self::QUOTE);
-        }
-    }
+  public function writeFieldEnd() {
+  }
 
-    private function writeJSONDouble($num)
-    {
-        $isMapKey = $this->writeContext_->isMapKey();
+  public function writeFieldStop() {
+  }
 
-        $this->writeContext_->write();
+  public function writeMapBegin($keyType, $valType, $size) {
+    $this->assertContextIsNotMapKey(self::NAME_MAP);
+    $this->writeContext_->write();
+    $this->trans_->write(self::LBRACE);
+    $this->pushWriteContext(new MapContext($this));
+  }
 
-        if ($isMapKey) {
-            $this->trans_->write(self::QUOTE);
-        }
+  public function writeMapEnd() {
+    $this->popWriteContext();
+    $this->trans_->write(self::RBRACE);
+  }
 
-        $this->trans_->write(json_encode((float)$num));
+  public function writeListBegin($elemType, $size) {
+    $this->assertContextIsNotMapKey(self::NAME_LIST);
+    $this->writeContext_->write();
+    $this->trans_->write(self::LBRACKET);
+    $this->pushWriteContext(new ListContext($this));
+    // No metadata!
+  }
 
-        if ($isMapKey) {
-            $this->trans_->write(self::QUOTE);
-        }
-    }
+  public function writeListEnd() {
+    $this->popWriteContext();
+    $this->trans_->write(self::RBRACKET);
+  }
 
-    /**
-     * Constructor
-     */
-    public function __construct($trans)
-    {
-        parent::__construct($trans);
-        $this->writeContext_ = new Context();
-    }
+  public function writeSetBegin($elemType, $size) {
+    $this->assertContextIsNotMapKey(self::NAME_SET);
+    $this->writeContext_->write();
+    $this->trans_->write(self::LBRACKET);
+    $this->pushWriteContext(new ListContext($this));
+    // No metadata!
+  }
 
-    /**
-     * Writes the message header
-     *
-     * @param string $name  Function name
-     * @param int    $type  message type TMessageType::CALL or TMessageType::REPLY
-     * @param int    $seqid The sequence id of this message
-     */
-    public function writeMessageBegin($name, $type, $seqid)
-    {
-        $this->trans_->write(self::LBRACKET);
-        $this->pushWriteContext(new ListContext($this));
-        $this->writeJSONString($name);
-        $this->writeJSONInteger($type);
-        $this->writeJSONInteger($seqid);
-    }
+  public function writeSetEnd() {
+    $this->popWriteContext();
+    $this->trans_->write(self::RBRACKET);
+  }
 
-    /**
-     * Close the message
-     */
-    public function writeMessageEnd()
-    {
-        $this->popWriteContext();
-        $this->trans_->write(self::RBRACKET);
-    }
+  public function writeBool($bool) {
+    $this->writeJSONInteger($bool ? 1 : 0);
+  }
 
-    /**
-     * Writes a struct header.
-     *
-     * @param  string     $name Struct name
-     */
-    public function writeStructBegin($name)
-    {
-        $this->writeContext_->write();
-        $this->trans_->write(self::LBRACE);
-        $this->pushWriteContext(new StructContext($this));
-    }
+  public function writeByte($byte) {
+    $this->writeJSONInteger($byte);
+  }
 
-    /**
-     * Close a struct.
-     */
-    public function writeStructEnd()
-    {
-        $this->popWriteContext();
-        $this->trans_->write(self::RBRACE);
-    }
+  public function writeI16($i16) {
+    $this->writeJSONInteger($i16);
+  }
 
-    public function writeFieldBegin($fieldName, $fieldType, $fieldId)
-    {
-        $this->writeJSONString($fieldName);
-    }
+  public function writeI32($i32) {
+    $this->writeJSONInteger($i32);
+  }
 
-    public function writeFieldEnd()
-    {
-    }
+  public function writeI64($i64) {
+    $this->writeJSONInteger($i64);
+  }
 
-    public function writeFieldStop()
-    {
-    }
+  public function writeDouble($dub) {
+    $this->writeJSONDouble($dub);
+  }
 
-    public function writeMapBegin($keyType, $valType, $size)
-    {
-        $this->assertContextIsNotMapKey(self::NAME_MAP);
-        $this->writeContext_->write();
-        $this->trans_->write(self::LBRACE);
-        $this->pushWriteContext(new MapContext($this));
-    }
+  public function writeString($str) {
+    $this->writeJSONString($str);
+  }
 
-    public function writeMapEnd()
-    {
-        $this->popWriteContext();
-        $this->trans_->write(self::RBRACE);
-    }
+  /**
+   * Reading methods.
+   *
+   * simplejson is not meant to be read back into thrift
+   * - see http://wiki.apache.org/thrift/ThriftUsageJava
+   * - use JSON instead
+   */
 
-    public function writeListBegin($elemType, $size)
-    {
-        $this->assertContextIsNotMapKey(self::NAME_LIST);
-        $this->writeContext_->write();
-        $this->trans_->write(self::LBRACKET);
-        $this->pushWriteContext(new ListContext($this));
-        // No metadata!
-    }
+  public function readMessageBegin(&$name, &$type, &$seqid) {
+    throw new TException("Not implemented");
+  }
 
-    public function writeListEnd()
-    {
-        $this->popWriteContext();
-        $this->trans_->write(self::RBRACKET);
-    }
+  public function readMessageEnd() {
+    throw new TException("Not implemented");
+  }
 
-    public function writeSetBegin($elemType, $size)
-    {
-        $this->assertContextIsNotMapKey(self::NAME_SET);
-        $this->writeContext_->write();
-        $this->trans_->write(self::LBRACKET);
-        $this->pushWriteContext(new ListContext($this));
-        // No metadata!
-    }
+  public function readStructBegin(&$name) {
+    throw new TException("Not implemented");
+  }
 
-    public function writeSetEnd()
-    {
-        $this->popWriteContext();
-        $this->trans_->write(self::RBRACKET);
-    }
+  public function readStructEnd() {
+    throw new TException("Not implemented");
+  }
 
-    public function writeBool($bool)
-    {
-        $this->writeJSONInteger($bool ? 1 : 0);
-    }
+  public function readFieldBegin(&$name, &$fieldType, &$fieldId) {
+    throw new TException("Not implemented");
+  }
 
-    public function writeByte($byte)
-    {
-        $this->writeJSONInteger($byte);
-    }
+  public function readFieldEnd() {
+    throw new TException("Not implemented");
+  }
 
-    public function writeI16($i16)
-    {
-        $this->writeJSONInteger($i16);
-    }
+  public function readMapBegin(&$keyType, &$valType, &$size) {
+    throw new TException("Not implemented");
+  }
 
-    public function writeI32($i32)
-    {
-        $this->writeJSONInteger($i32);
-    }
+  public function readMapEnd() {
+    throw new TException("Not implemented");
+  }
 
-    public function writeI64($i64)
-    {
-        $this->writeJSONInteger($i64);
-    }
+  public function readListBegin(&$elemType, &$size) {
+    throw new TException("Not implemented");
+  }
 
-    public function writeDouble($dub)
-    {
-        $this->writeJSONDouble($dub);
-    }
+  public function readListEnd() {
+    throw new TException("Not implemented");
+  }
 
-    public function writeString($str)
-    {
-        $this->writeJSONString($str);
-    }
+  public function readSetBegin(&$elemType, &$size) {
+    throw new TException("Not implemented");
+  }
 
-    /**
-     * Reading methods.
-     *
-     * simplejson is not meant to be read back into thrift
-     * - see http://wiki.apache.org/thrift/ThriftUsageJava
-     * - use JSON instead
-     */
+  public function readSetEnd() {
+    throw new TException("Not implemented");
+  }
 
-    public function readMessageBegin(&$name, &$type, &$seqid)
-    {
-        throw new TException("Not implemented");
-    }
+  public function readBool(&$bool) {
+    throw new TException("Not implemented");
+  }
 
-    public function readMessageEnd()
-    {
-        throw new TException("Not implemented");
-    }
+  public function readByte(&$byte) {
+    throw new TException("Not implemented");
+  }
 
-    public function readStructBegin(&$name)
-    {
-        throw new TException("Not implemented");
-    }
+  public function readI16(&$i16) {
+    throw new TException("Not implemented");
+  }
 
-    public function readStructEnd()
-    {
-        throw new TException("Not implemented");
-    }
+  public function readI32(&$i32) {
+    throw new TException("Not implemented");
+  }
 
-    public function readFieldBegin(&$name, &$fieldType, &$fieldId)
-    {
-        throw new TException("Not implemented");
-    }
+  public function readI64(&$i64) {
+    throw new TException("Not implemented");
+  }
 
-    public function readFieldEnd()
-    {
-        throw new TException("Not implemented");
-    }
+  public function readDouble(&$dub) {
+    throw new TException("Not implemented");
+  }
 
-    public function readMapBegin(&$keyType, &$valType, &$size)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readMapEnd()
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readListBegin(&$elemType, &$size)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readListEnd()
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readSetBegin(&$elemType, &$size)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readSetEnd()
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readBool(&$bool)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readByte(&$byte)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readI16(&$i16)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readI32(&$i32)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readI64(&$i64)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readDouble(&$dub)
-    {
-        throw new TException("Not implemented");
-    }
-
-    public function readString(&$str)
-    {
-        throw new TException("Not implemented");
-    }
+  public function readString(&$str) {
+    throw new TException("Not implemented");
+  }
 }

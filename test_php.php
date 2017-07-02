@@ -51,7 +51,7 @@ class TestCode {
 
       // 直接使用rpc proxy进行通信
       // $socket = new TSocket('localhost', 5550);
-      $socket = new TSocket('unix:///usr/local/rpc_proxy/proxy.sock');
+      $socket = new TSocket('/usr/local/rpc_proxy/proxy.sock');
 
       $service_name = "ipgeo";
       // $transport = new TBufferedTransport($socket, 1024, 1024);

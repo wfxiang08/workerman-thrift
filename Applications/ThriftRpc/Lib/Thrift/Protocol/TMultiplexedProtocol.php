@@ -40,11 +40,7 @@ class TMultiplexedProtocol extends TProtocolDecorator {
    */
   const SEPARATOR = ":";
 
-  /**
-   * The name of service.
-   *
-   * @var string
-   */
+  // 在同一个连接上发送多个请求时, 可以通过 serviceName_ 来区分
   private $serviceName_;
 
   /**

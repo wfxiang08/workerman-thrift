@@ -206,22 +206,32 @@ class TSocket extends TTransport {
       throw new TTransportException('Cannot open null host', TTransportException::NOT_OPEN);
     }
 
-    if (strncmp($this->host_, "unix://", 7) == 0) {
+    $host = $this->host_;
+
+
+    if (strpos(":", $this->host_) === false) {
+      $host = "unix://" + $this->host_;
+
+      // Unix Domain Socket直接忽略 port, 强制设置为null
       $this->port_ = null;
+      // 如果使用rpc_proxy可以直接忽略 persist_
+      $this->persist_ = false;
     } else {
       if ($this->port_ <= 0) {
         throw new TTransportException('Cannot open without port', TTransportException::NOT_OPEN);
       }
     }
 
+    // 如果使用rpc_proxy可以直接忽略 persist_
     if ($this->persist_) {
-      $this->handle_ = @pfsockopen($this->host_,
+      $this->handle_ = @pfsockopen($host,
         $this->port_,
         $errno,
         $errstr,
         $this->sendTimeoutSec_ + ($this->sendTimeoutUsec_ / 1000000));
     } else {
-      $this->handle_ = @fsockopen($this->host_,
+
+      $this->handle_ = @fsockopen($host,
         $this->port_,
         $errno,
         $errstr,
@@ -230,7 +240,7 @@ class TSocket extends TTransport {
 
     // Connect failed?
     if ($this->handle_ === FALSE) {
-      $error = 'TSocket: Could not connect to ' . $this->host_ . ':' . $this->port_ . ' (' . $errstr . ' [' . $errno . '])';
+      $error = 'TSocket: Could not connect to ' . $host . ':' . $this->port_ . ' (' . $errstr . ' [' . $errno . '])';
       if ($this->debug_) {
         call_user_func($this->debugHandler_, $error);
       }
