@@ -46,11 +46,7 @@ class TSocket extends TTransport {
    */
   protected $host_ = 'localhost';
 
-  /**
-   * Remote port
-   *
-   * @var int
-   */
+  // 端口
   protected $port_ = '9090';
 
   /**
@@ -124,6 +120,7 @@ class TSocket extends TTransport {
                               $debugHandler = null) {
     $this->host_ = $host;
     $this->port_ = $port;
+    echo "Host: {$host}, Port: {$port}\n";
     $this->persist_ = $persist;
     $this->debugHandler_ = $debugHandler ? $debugHandler : 'error_log';
   }
@@ -209,14 +206,17 @@ class TSocket extends TTransport {
     $host = $this->host_;
 
 
-    if (strpos(":", $this->host_) === false) {
-      $host = "unix://" + $this->host_;
+    if (strpos($this->host_, ":") === false) {
+      $host = "unix://" . $this->host_;
+
+      echo "Host: ${host}\n";
 
       // Unix Domain Socket直接忽略 port, 强制设置为null
       $this->port_ = null;
       // 如果使用rpc_proxy可以直接忽略 persist_
       $this->persist_ = false;
     } else {
+      $this->port_ = (int)$this->port_;
       if ($this->port_ <= 0) {
         throw new TTransportException('Cannot open without port', TTransportException::NOT_OPEN);
       }

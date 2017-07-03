@@ -37,6 +37,8 @@ class TBinaryProtocol extends TProtocol {
   protected $strictRead_ = false;
   protected $strictWrite_ = true;
 
+  public $skipReadMessage = false;
+
   public function __construct($trans, $strictRead = false, $strictWrite = true) {
     parent::__construct($trans);
     $this->strictRead_ = $strictRead;
@@ -200,6 +202,9 @@ class TBinaryProtocol extends TProtocol {
   }
 
   public function readMessageBegin(&$name, &$type, &$seqid) {
+    if ($this->skipReadMessage) {
+      return null;
+    }
     $result = $this->readI32($sz);
     if ($sz < 0) {
       $version = (int)($sz & self::VERSION_MASK);
