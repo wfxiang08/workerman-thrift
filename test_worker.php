@@ -31,7 +31,7 @@ class TestCode {
     // 创建Processor
     $processor = new \Services\HelloWorld\HelloWorldProcessor($handler);
 
-    echo "Name: " . $handler->sayHello("wangfei") . "\n";
+    // echo "Name: " . $handler->sayHello("wangfei") . "\n";
     $client = new SMThriftWorker($processor, 'tcp://localhost', 5556);
     $client->run();
   }
