@@ -125,7 +125,7 @@ class SMThriftWorker {
             // 处理其他请求
             // $fname, $mtype, $rseqid
             $this->processor->process($protocol, new TBinaryProtocol($outputBuffer));
-            echo "Process complete....\n";
+            // echo "Process complete....\n";
           } catch (\Exception $ex) {
             // 序列化异常, 代码本身没有问题
             echo "Exception: " . $ex->getTraceAsString() . "\n";
@@ -133,7 +133,7 @@ class SMThriftWorker {
             continue;
           }
 
-          echo "Normal response: " . $outputBuffer->getBuffer() . "\n";
+          // echo "Normal response: " . $outputBuffer->getBuffer() . "\n";
           // 正常请求的返回
           $transport->flush($outputBuffer->getBuffer());
 

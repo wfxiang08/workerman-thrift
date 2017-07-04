@@ -142,7 +142,7 @@ class TFramedTransport extends TTransport {
     $val = unpack('N', $buf);
     $sz = $val[1];
 
-    echo "Frame Size: {$sz}\n";
+    // echo "Frame Size: {$sz}\n";
 
     $this->rBuf_ = $this->transport_->readAll($sz);
   }
@@ -180,7 +180,7 @@ class TFramedTransport extends TTransport {
     $out = pack('N', TStringFuncFactory::create()->strlen($this->wBuf_));
     $out .= $this->wBuf_;
 
-    echo 'Out: ' . $out . "\n";
+    // echo 'Out: ' . $out . "\n";
     // Note that we clear the internal wBuf_ prior to the underlying write
     // to ensure we're in a sane state (i.e. internal buffer cleaned)
     // if the underlying write throws up an exception
