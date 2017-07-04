@@ -56,7 +56,7 @@ class SMThriftWorker {
 
   protected function connectToLb() {
     $socket = new TSocket($this->host, $this->port);
-    $socket->setRecvTimeout(5); // 5s没有消息就timeout
+    $socket->setRecvTimeout(5000); // 5s没有消息就timeout
 
     try {
       $socket->open();
@@ -77,9 +77,6 @@ class SMThriftWorker {
     $transport = new TFramedTransport($socket, true, true);
     $protocol = new TBinaryProtocol($transport);
 
-    $name = "";
-    $type = 0;
-    $seqid = 0;
 
     while (true) {
       // 太长时间没有收到消息, 则关闭
@@ -90,15 +87,30 @@ class SMThriftWorker {
 
       try {
         // 总会及时收到消息?
+        $name = "";
+        $type = 0;
+        $seqid = 0;
+
+        // 开始新的Frame
+        $transport->readFrame();
+
+        // echo "Before Receive Message: {$name}, {$type}, {$seqid}\n";
+        $protocol->skipReadMessage = false;
         $protocol->readMessageBegin($name, $type, $seqid);
+        // echo "Receive Message: {$name}, {$type}, {$seqid}\n";
+
+        // 暂时屏蔽ReadMessage操作
         $protocol->skipReadMessage = true;
 
         if ($type == self::MESSAGE_TYPE_HEART_BEAT) {
           // 如果是心跳, 则立马返回
+          $protocol->readMessageEnd();
+
           $protocol->writeMessageBegin($name, $type, $seqid);
+          $protocol->writeMessageEnd();
           $transport->flush();
           $this->last_hb_time = time();
-          echo "Received Hb Signal from LB\n";
+          // echo "Received Hb Signal from LB\n";
 
         } else if ($type == self::MESSAGE_TYPE_STOP_CONFIRM) {
           $this->alive = false;
@@ -112,17 +124,18 @@ class SMThriftWorker {
           try {
             // 处理其他请求
             // $fname, $mtype, $rseqid
-            $this->processor->process($protocol, $outputBuffer, $name, $type, $seqid);
-
+            $this->processor->process($protocol, new TBinaryProtocol($outputBuffer));
+            echo "Process complete....\n";
           } catch (\Exception $ex) {
             // 序列化异常, 代码本身没有问题
+            echo "Exception: " . $ex->getTraceAsString() . "\n";
             $this->writeExceptionBack($ex, $name, $seqid, $protocol, $transport);
             continue;
           }
 
+          echo "Normal response: " . $outputBuffer->getBuffer() . "\n";
           // 正常请求的返回
-          $transport->putBack($outputBuffer->getBuffer());
-          $transport->flush();
+          $transport->flush($outputBuffer->getBuffer());
 
           $start = microtime(true) - $start;
           echo "${name} elapsed {$start} seconds\n";
@@ -131,8 +144,13 @@ class SMThriftWorker {
         echo "Exception and Reconnect: " . $ex->getTraceAsString() . "\n";
         // 这里出现异常, 就必须断开重连了
         $socket->close();
+        sleep($this->reconnect_interval);
+        if ($this->reconnect_interval <= 4) {
+          $this->reconnect_interval *= 2;
+        }
         break;
       } finally {
+        // echo "reset skipReadMessage\n";
         $protocol->skipReadMessage = false;
       }
     }

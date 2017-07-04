@@ -76,8 +76,47 @@ class TestCode {
       print 'TException: ' . $tx->getMessage() . "\n";
     }
   }
+
+  function testProxiedRPCHelloworld() {
+    try {
+      // 127.0.0.1:5550
+      // /usr/local/rpc_proxy/proxy.sock
+
+      foreach (glob(__DIR__ . '/Applications/ThriftRpc/Services/HelloWorld/*.php') as $start_file) {
+        // echo $start_file;
+        require_once $start_file;
+      }
+
+      // 直接使用rpc proxy进行通信
+      $socket = new TSocket('tcp://localhost', 5550);
+      // $socket = new TSocket('/usr/local/rpc_proxy/proxy.sock');
+
+      $service_name = "hello";
+      // $transport = new TBufferedTransport($socket, 1024, 1024);
+      $transport = new \Thrift\Transport\TFramedTransport($socket, true, true);
+
+      // 指定后端的服务
+      $protocol = new TMultiplexedProtocol(new TBinaryProtocol($transport), $service_name);
+      $client = new \Services\HelloWorld\HelloWorldClient($protocol);
+
+      $transport->open();
+
+      // $client->ping();
+      // print "ping()\n";
+
+      $data = $client->sayHello("wwww");
+      var_dump($data);
+
+      $transport->close();
+
+    } catch
+    (TException $tx) {
+      print 'TException: ' . $tx->getMessage() . "\n";
+    }
+  }
 }
 
 $testCode = new TestCode();
 // $testCode->testDirectRPC();
-$testCode->testProxiedRPC();
+// $testCode->testProxiedRPC();
+$testCode->testProxiedRPCHelloworld();

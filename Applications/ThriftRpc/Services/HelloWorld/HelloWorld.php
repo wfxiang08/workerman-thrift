@@ -241,13 +241,17 @@ class HelloWorldProcessor {
     $rseqid = 0;
     $fname = null;
     $mtype = 0;
+    echo "Begin of readMessageBegin\n";
     // 读取MessageBegin
     $input->readMessageBegin($fname, $mtype, $rseqid);
+    echo "End of readMessageBegin\n";
+
     // 得到方法名, 参数
     $methodname = 'process_' . $fname;
     if (!method_exists($this, $methodname)) {
       $input->skip(TType::STRUCT);
       $input->readMessageEnd();
+
       $x = new TApplicationException('Function ' . $fname . ' not implemented.', TApplicationException::UNKNOWN_METHOD);
       $output->writeMessageBegin($fname, TMessageType::EXCEPTION, $rseqid);
       $x->write($output);
@@ -266,6 +270,7 @@ class HelloWorldProcessor {
     $args->read($input);
     $input->readMessageEnd();
     $result = new HelloWorld_sayHello_result();
+    echo "Arg: " . $args->name . "\n";
     $result->success = $this->handler_->sayHello($args->name);
     $bin_accel = ($output instanceof TBinaryProtocolAccelerated) && function_exists('thrift_protocol_write_binary');
     if ($bin_accel) {

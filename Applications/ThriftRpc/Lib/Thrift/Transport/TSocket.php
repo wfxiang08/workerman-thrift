@@ -212,7 +212,7 @@ class TSocket extends TTransport {
       echo "Host: ${host}\n";
 
       // Unix Domain Socket直接忽略 port, 强制设置为null
-      $this->port_ = null;
+      $this->port_ = -1;
       // 如果使用rpc_proxy可以直接忽略 persist_
       $this->persist_ = false;
     } else {
@@ -271,6 +271,7 @@ class TSocket extends TTransport {
    * @return string Binary data
    */
   public function read($len) {
+    // echo "Read {$len} with timeout: " . $this->recvTimeoutSec_ . "\n";
     $null = null;
     $read = array($this->handle_);
     $readable = @stream_select($read, $null, $null, $this->recvTimeoutSec_, $this->recvTimeoutUsec_);
@@ -278,17 +279,21 @@ class TSocket extends TTransport {
     if ($readable > 0) {
       $data = fread($this->handle_, $len);
       if ($data === false) {
+        echo "Read failed failed @01\n";
         throw new TTransportException('TSocket: Could not read ' . $len . ' bytes from ' .
           $this->host_ . ':' . $this->port_);
       } elseif ($data == '' && feof($this->handle_)) {
+        echo "Read failed failed @02\n";
         throw new TTransportException('TSocket read 0 bytes');
       }
 
       return $data;
     } elseif ($readable === 0) {
+      echo "Read failed failed @03\n";
       throw new TTransportException('TSocket: timed out reading ' . $len . ' bytes from ' .
         $this->host_ . ':' . $this->port_);
     } else {
+      echo "Read failed failed @04\n";
       throw new TTransportException('TSocket: Could not read ' . $len . ' bytes from ' .
         $this->host_ . ':' . $this->port_);
     }

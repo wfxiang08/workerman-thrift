@@ -96,10 +96,12 @@ class TFramedTransport extends TTransport {
    * @param int $len How much data
    */
   public function read($len) {
+    // 如果不从Frame中读取数据, 则直接访问内部的transport
     if (!$this->read_) {
       return $this->transport_->read($len);
     }
 
+    // 如果buffer读取完毕, 则直接读取Frame
     if (TStringFuncFactory::create()->strlen($this->rBuf_) === 0) {
       $this->readFrame();
     }
@@ -135,10 +137,12 @@ class TFramedTransport extends TTransport {
   /**
    * Reads a chunk of data into the internal read buffer.
    */
-  private function readFrame() {
+  public function readFrame() {
     $buf = $this->transport_->readAll(4);
     $val = unpack('N', $buf);
     $sz = $val[1];
+
+    echo "Frame Size: {$sz}\n";
 
     $this->rBuf_ = $this->transport_->readAll($sz);
   }
@@ -164,7 +168,11 @@ class TFramedTransport extends TTransport {
    * Writes the output buffer to the stream in the format of a 4-byte length
    * followed by the actual data.
    */
-  public function flush() {
+  public function flush($wBuff = null) {
+    if ($wBuff !== null) {
+      $this->wBuf_ = $wBuff;
+    }
+    // 没有数据, 就直接flush一次
     if (!$this->write_ || TStringFuncFactory::create()->strlen($this->wBuf_) == 0) {
       return $this->transport_->flush();
     }
@@ -172,6 +180,7 @@ class TFramedTransport extends TTransport {
     $out = pack('N', TStringFuncFactory::create()->strlen($this->wBuf_));
     $out .= $this->wBuf_;
 
+    echo 'Out: ' . $out . "\n";
     // Note that we clear the internal wBuf_ prior to the underlying write
     // to ensure we're in a sane state (i.e. internal buffer cleaned)
     // if the underlying write throws up an exception

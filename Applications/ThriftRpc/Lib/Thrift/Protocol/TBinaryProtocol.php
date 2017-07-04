@@ -201,10 +201,25 @@ class TBinaryProtocol extends TProtocol {
     return $result + $len;
   }
 
+  private $fname;
+  private $mtype;
+  private $rseqid;
+
+
   public function readMessageBegin(&$name, &$type, &$seqid) {
-    if ($this->skipReadMessage) {
+    if ($this->skipReadMessage && $this->fname !== null) {
+      // echo "Skip readMessageBegin\n";
+      $name = $this->fname;
+      $type = $this->mtype;
+      $seqid = $this->rseqid;
+      $this->fname = null;
+      $this->mtype = null;
+      $this->rseqid = null;
       return null;
+    } else {
+      // echo "Normal readMessageBegin\n";
     }
+
     $result = $this->readI32($sz);
     if ($sz < 0) {
       $version = (int)($sz & self::VERSION_MASK);
@@ -228,6 +243,10 @@ class TBinaryProtocol extends TProtocol {
       }
     }
 
+    $this->fname = $name;
+    $this->mtype = $type;
+    $this->rseqid = $seqid;
+    // echo "Result: {$result}\n";
     return $result;
   }
 
