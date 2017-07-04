@@ -138,7 +138,7 @@ class SMThriftWorker {
           $transport->flush($outputBuffer->getBuffer());
 
           $start = microtime(true) - $start;
-          echo "${name} elapsed {$start} seconds\n";
+          echo "${name} elapsed " . sprintf("%.3fms\n", $start * 1000);
         }
       } catch (\Exception $ex) {
         echo "Exception and Reconnect: " . $ex->getTraceAsString() . "\n";
